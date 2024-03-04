@@ -6,6 +6,7 @@
 #include<exception>
 #include<pthread.h>
 #include "../lock/locker.h"
+#include "../log/logger.h"
 
 template<typename T>
 class ThreadPool{
@@ -36,7 +37,8 @@ ThreadPool<T>::ThreadPool(int thread_number, int max_requests): m_thread_number(
     }
 
     for(int i = 0; i < m_thread_number; ++i){
-        printf("create the %dth thread\n", i);
+        // printf("create the %dth thread\n", i);
+        LOG(std::string("create the ") + std::to_string(i) + "th thread\n");
         if(pthread_create(m_threads + i, NULL, worker, this) != 0){
             delete[] m_threads;
             throw std::exception();

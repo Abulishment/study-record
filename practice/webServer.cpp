@@ -16,6 +16,7 @@
 #include "./threadpool/threadPool.h"
 #include "./http/httpConnection.h"
 #include "./src/support.h"
+#include "./log/logger.h"
 
 #define MAX_FD 65536
 #define MAX_EVENT_NUMBER 10000
@@ -58,35 +59,41 @@ public:
         int clientfd;
         clientfd = accept(listen_fd, (sockaddr*) &client_address, &client_len);
         if(clientfd < 0){
-            if(print)
-            printf("accept fails : %s clientfd is %d, listen_fd is %d\n", strerror(errno), clientfd, listen_fd);
+            // if(print)
+            // printf("accept fails : %s clientfd is %d, listen_fd is %d\n", strerror(errno), clientfd, listen_fd);
+            LOG(std::string("accept fails : ") + strerror(errno) + " clientfd is " + std::to_string(clientfd) + ", listenfd is " + std::to_string(listen_fd));
         }else if(Http_Conn::m_user_count >= MAX_FD){
-            if(print)
-            printf("too many users. refuse connection\n"); 
+            // if(print)
+            // printf("too many users. refuse connection\n"); 
+            LOG(std::string("too many users. refuse connection\n"));
             send_error(clientfd, "Internal server busy\n");
         }else{
-            if(print)
-            printf("accept connection %d(fd)\n", clientfd);
+            // if(print)
+            // printf("accept connection %d(fd)\n", clientfd);
+            LOG(std::string("accept connection : ") + std::to_string(clientfd) + "\n");
             users[clientfd].init(clientfd, client_address, client_len);
         }
     }
 
     void deal_err(int sockfd){
-            if(print)
-        printf("%d connection error: %s\n", sockfd, strerror(errno));
+            // if(print)
+        // printf("%d connection error: %s\n", sockfd, strerror(errno));
+        LOG(std::to_string(sockfd) + " connection error: " + strerror(errno) + '\n');
         users[sockfd].close_conn();
     }
 
     void deal_close(int sockfd){
-            if(print)
-        printf("%d connection closed by foreigner", sockfd);
+        //     if(print)
+        // printf("%d connection closed by foreign host", sockfd); 
+        LOG(std::to_string(sockfd) + " connection closed by foreign host:" + '\n');
         users[sockfd].close_conn();
     }
 
     void deal_read(int sockfd){
         if(users[sockfd].read()){
-            if(print)
-            printf("read success in %d\n", sockfd);
+            // if(print)
+            // printf("read success in %d\n", sockfd);
+            LOG(std::string("read success in ") + std::to_string(sockfd) + '\n');
             pool.append(users + sockfd); 
         }else{
             users[sockfd].close_conn();
@@ -100,12 +107,14 @@ public:
     }
 
     void eventloop(){
-        if(print)
-        printf("listenfd = %d, epollfd = %d\n", listen_fd, epoll_fd);
+        // if(print)
+        // printf("listenfd = %d, epollfd = %d\n", listen_fd, epoll_fd);
+        LOG(std::string("listenfd = ") + std::to_string(listen_fd) + ", epollfd = " + std::to_string(epoll_fd) + '\n');
         while(true){
             int number = epoll_wait(epoll_fd, events, MAX_EVENT_NUMBER, -1);
             if((number < 0) && (errno != EINTR)){
-                fprintf(stderr, "epoll_wait fails\n");
+                // fprintf(stderr, "epoll_wait fails\n");
+                LOG(std::string("epoll_wait errors\n"));
                 break;
             }
 
@@ -122,7 +131,8 @@ public:
                 }else if(events[i].events & EPOLLOUT){
                     deal_write(sockfd);
                 }else{
-                    printf("unexpected event happens\n");
+                    // printf("unexpected event happens\n");
+                    LOG(std::string("unexpected event happens\n"));
                 }
             }
         }
@@ -148,6 +158,7 @@ int main(int argc, char *argv[]){
     }
     const char * port = argv[1];
 
+    Logger::getInstance()->init("./log.txt");
     WebServer ws(port);
     ws.init();
     ws.eventloop();

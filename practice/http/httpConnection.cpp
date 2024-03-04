@@ -1,6 +1,7 @@
 #include "httpConnection.h"
 #include "../src/support.h"
 #include "../../../../../usr/include/x86_64-linux-gnu/sys/uio.h"
+#include "../log/logger.h"
 
 const char * ok_200_title = "OK";
 const char * error_400_title = "Bad Request";
@@ -19,8 +20,9 @@ static bool print = true;
 
 void Http_Conn::close_conn(bool real_close){
     if(real_close && (m_sockfd != -1)){
-        if(print)
-        printf("close %d(fd)\n", m_sockfd);
+        // if(print)
+        // printf("close %d(fd)\n", m_sockfd);
+        LOG(std::string("close ") + std::to_string(m_sockfd) + "(fd)\n");
         removefd(m_epollfd, m_sockfd);
         m_sockfd = -1;
         m_user_count--;
@@ -96,16 +98,19 @@ bool Http_Conn::read(){
         bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
         if(bytes_read == -1){
             if((errno == EAGAIN) || (errno == EWOULDBLOCK)){
-                if(print)
-                printf("read success in %d\n", m_sockfd);
+                // if(print)
+                // printf("read success in %d\n", m_sockfd);
+                LOG(std::string("read success in ") + std::to_string(m_sockfd) + "\n");
                 break;
             }
             //error
-            printf("read error : %s\n", strerror(errno));
+            // printf("read error : %s\n", strerror(errno));
+            LOG(std::string("read error : ") + strerror(errno) + "\n");
             return false;
         }else if(bytes_read == 0){
             //close by foreignal host;
-            printf("connection closed by foreignal host %d\n", m_sockfd);
+            // printf("connection closed by foreign host %d\n", m_sockfd);
+            LOG(std::string("connection closed by foreign host ") + std::to_string(m_sockfd) + '\n');
             return false;
         }
         m_read_idx += bytes_read;
@@ -181,8 +186,9 @@ Http_Conn::HTTP_CODE Http_Conn::parse_headers(char * text){
         text += strspn(text, " \t");
         m_host = text;
     }else{
-        if(print)
-        printf("oops!unknown header%s\n", text);
+        // if(print)
+        // printf("oops!unknown header: \"%s\"\n", text);
+        LOG(std::string("oops! unknown header: \"") + text + "\"\n");
     }
 
     return NO_REQUEST;
@@ -204,8 +210,9 @@ Http_Conn::HTTP_CODE Http_Conn::process_read(){
     while(((m_check_state == CHECK_STATE_CONTENT) && (line_status == LINE_OK)) || ((line_status = parse_line()) == LINE_OK)){
         text = get_line();
         m_start_line = m_checked_idx;
-        if(print)
-        printf("got 1 http line : %s in %d\n", text, m_sockfd);
+        // if(print)
+        // printf("got 1 http line : %s in %d\n", text, m_sockfd);
+        LOG(std::string("get 1 http line: \"") + text + "\" in " + std::to_string(m_sockfd) + "\n");
 
         switch (m_check_state)
         {
@@ -279,7 +286,8 @@ bool Http_Conn::write(){
         // writev(STDOUT_FILENO, m_iv, m_iv_count);
         if(temp < 0){
             if((errno == EAGAIN) || (errno == EWOULDBLOCK)){
-                printf("write in %d blocks, try next time\n", m_sockfd);
+                // printf("write in %d blocks, try next time\n", m_sockfd);
+                LOG(std::string("write in ") + std::to_string(m_sockfd) + " blocks, try later\n");
                 modfd(m_epollfd, m_sockfd, EPOLLOUT, true);
                 return true;
             }
@@ -289,16 +297,27 @@ bool Http_Conn::write(){
 
         bytes_to_send -= temp;
         bytes_have_send += temp;
-        if (bytes_have_send >= m_iv[0].iov_len)
-        {
+        // if (bytes_have_send >= m_iv[0].iov_len)
+        // {
+        //     m_iv[0].iov_len = 0;
+        //     m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
+        //     m_iv[1].iov_len = bytes_to_send;
+        // }
+        // else
+        // {
+        //     m_iv[0].iov_base = m_write_buf + bytes_have_send;
+        //     m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
+        // }
+
+        if(bytes_to_send >= m_iv[1].iov_len){
             m_iv[0].iov_len = 0;
-            m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
-            m_iv[1].iov_len = bytes_to_send;
-        }
-        else
-        {
-            m_iv[0].iov_base = m_write_buf + bytes_have_send;
-            m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
+            int dif = m_iv[1].iov_len - bytes_to_send;
+            m_iv[1].iov_base += dif;
+            m_iv[1].iov_len -= dif;
+        }else{
+            int dif = m_iv[0].iov_len + m_iv[1].iov_len - bytes_to_send;
+            m_iv[0].iov_base += dif;
+            m_iv[0].iov_len -= dif;
         }
         /*TAG*/
         if(bytes_to_send <= 0){
@@ -306,17 +325,21 @@ bool Http_Conn::write(){
             unmap();
             modfd(m_epollfd, m_sockfd, EPOLLIN, true);
             if(m_linger){
-                if(print)
-                printf("write success in %d, keep-alive\n", m_sockfd);
+                // if(print)
+                // printf("write success in %d, keep-alive\n", m_sockfd);
+                LOG(std::string("write success in ") + std::to_string(m_sockfd) + ", keep-alive\n");
                 if(m_checked_idx < m_read_idx){
-                    if(print)
-                    printf("next request has come and will be discard %d : %s\n", m_sockfd, &m_read_buf[m_checked_idx]);
+                    // if(print)
+                    // printf("some data of next request has come and will be discard %d : %s\n", m_sockfd, &m_read_buf[m_checked_idx]);
+                    LOG(std::string("some data of next request has come and will be discard ") + std::to_string(m_sockfd) + " : \"" + &m_read_buf[m_checked_idx] + "\"\n");
+                return false;
                 }
                 init();
                 return true;
             }else{
-                if(print)
-                printf("write success in %d, close\n", m_sockfd);
+                // if(print)
+                // printf("write success in %d, close\n", m_sockfd);
+                LOG(std::string("write success in ") + std::to_string(m_sockfd) + ", close\n");
                 return false;
             }
         }
@@ -368,8 +391,9 @@ bool Http_Conn::process_write(HTTP_CODE ret){
     switch (ret)
     {
     case INTERNAL_ERROR:
-        if(print)
-            printf("invalid response\n");
+        // if(print)
+        //     printf("INTERNAL_ERROR in %d\n", m_sockfd);
+            LOG(std::string("INTERNAL_ERROR in ") + std::to_string(m_sockfd) + "\n");
         add_status_line(500, error_500_title);
         add_headers(strlen(error_500_form));
         if(!add_content(error_500_form)){
@@ -377,8 +401,9 @@ bool Http_Conn::process_write(HTTP_CODE ret){
         }
         break;
     case NO_RESOURCE:
-        if(print)
-            printf("invalid response\n");
+        // if(print)
+        //     printf("NO_RESOURCE in %d\n", m_sockfd);
+        LOG(std::string("NO_RESOURCE in ") + std::to_string(m_sockfd) + "\n");
         add_status_line(404, error_404_title); 
         add_headers(strlen(error_404_form));
         if(!add_content(error_404_form)){
@@ -386,8 +411,9 @@ bool Http_Conn::process_write(HTTP_CODE ret){
         }
         break;
     case FORBIDDEN_REQUEST:
-        if(print)
-            printf("invalid response\n");
+        // if(print)
+        //     printf("FORBIDDEN_REQUEST in %d\n", m_sockfd);
+        LOG(std::string("FORBIDDEN_REQUEST in ") + std::to_string(m_sockfd) + "\n");
         add_status_line(403, error_403_title);
         add_headers(strlen(error_403_form));
         if(!add_content(error_403_form)){
@@ -395,8 +421,9 @@ bool Http_Conn::process_write(HTTP_CODE ret){
         }
         break;
     case FILE_REQUEST:
-        if(print)
-            printf("valid response\n");
+        // if(print)
+        //     printf("VALID_FILE_REQUEST in %d\n", m_sockfd);
+        LOG(std::string("VALID_FILE_REQUEST in ") + std::to_string(m_sockfd) + "\n");
         add_status_line(200, ok_200_title);
         if(m_file_stat.st_size != 0){
             add_headers(m_file_stat.st_size);
@@ -416,6 +443,9 @@ bool Http_Conn::process_write(HTTP_CODE ret){
         }
         break;
     default:
+        // if(print)
+        //     printf("BAD_REQUEST in %d\n", m_sockfd);
+        LOG(std::string("BAD_REQUEST in ") + std::to_string(m_sockfd) + "\n");
         return false;
         break;
     }
@@ -428,8 +458,9 @@ bool Http_Conn::process_write(HTTP_CODE ret){
 }
 
 void Http_Conn::process(){
-    if(print)
-    printf("start process %d\n", m_sockfd);
+    // if(print)
+    // printf("start process in %d\n", m_sockfd);
+    LOG(std::string("start process in ") + std::to_string(m_sockfd) + "\n");
     HTTP_CODE read_ret = process_read();
     if(read_ret == NO_REQUEST){
         modfd(m_epollfd, m_sockfd, EPOLLIN, true);
