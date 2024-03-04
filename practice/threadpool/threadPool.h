@@ -66,7 +66,6 @@ bool ThreadPool<T>::append(T *request){
 template<typename T>
 void *ThreadPool<T>::worker(void *arg){
     ThreadPool *pool = (ThreadPool*) arg;
-    pthread_detach(pthread_self());
     pool->run();
     return pool;
 }

@@ -15,9 +15,11 @@ const char * doc_root = ".";
 
 int Http_Conn::m_user_count = 0;
 int Http_Conn::m_epollfd = -1;
+static bool print = true;
 
 void Http_Conn::close_conn(bool real_close){
     if(real_close && (m_sockfd != -1)){
+        if(print)
         printf("close %d(fd)\n", m_sockfd);
         removefd(m_epollfd, m_sockfd);
         m_sockfd = -1;
@@ -34,7 +36,7 @@ void Http_Conn::init(int sockfd, const sockaddr_storage & addr, socklen_t addrle
     int reuse = 1;
     setsockopt(m_sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
-    addfd_oneshot(m_epollfd, sockfd, false);
+    addfd_oneshot(m_epollfd, sockfd, true);
     m_user_count++;
     init();
 }
@@ -51,6 +53,8 @@ void Http_Conn::init(){
     m_checked_idx = 0;
     m_read_idx = 0;
     m_write_idx = 0;
+    bytes_to_send = 0;
+    bytes_have_send = 0;
     memset(m_read_buf, '\0', READ_BUFFER_SIZE);
     memset(m_write_buf, '\0', WRITE_BUFFER_SIZE);
     memset(m_real_file, '\0', FILENAME_LEN);
@@ -92,12 +96,16 @@ bool Http_Conn::read(){
         bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
         if(bytes_read == -1){
             if((errno == EAGAIN) || (errno == EWOULDBLOCK)){
+                if(print)
+                printf("read success in %d\n", m_sockfd);
                 break;
             }
             //error
+            printf("read error : %s\n", strerror(errno));
             return false;
         }else if(bytes_read == 0){
             //close by foreignal host;
+            printf("connection closed by foreignal host %d\n", m_sockfd);
             return false;
         }
         m_read_idx += bytes_read;
@@ -128,7 +136,7 @@ Http_Conn::HTTP_CODE Http_Conn::parse_request_line(char *text){
     }
     *m_version++ = '\0';
     m_version += strspn(m_version, " \t");
-    if(strcasecmp(m_version, "HTTP/1.1") != 0){
+    if(strcasecmp(m_version, "HTTP/1.1") != 0 && strcasecmp(m_version, "HTTP/1.0") != 0){
         return BAD_REQUEST;
     }
 
@@ -136,6 +144,12 @@ Http_Conn::HTTP_CODE Http_Conn::parse_request_line(char *text){
         m_url += 7;
         m_url = strchr(m_url, '/');
     }
+    if (strncasecmp(m_url, "https://", 8) == 0)
+    {
+        m_url += 8;
+        m_url = strchr(m_url, '/');
+    }
+
     if(!m_url || m_url[0] != '/'){
         return BAD_REQUEST;
     }
@@ -167,7 +181,8 @@ Http_Conn::HTTP_CODE Http_Conn::parse_headers(char * text){
         text += strspn(text, " \t");
         m_host = text;
     }else{
-        printf("oops!unknown header%s", text);
+        if(print)
+        printf("oops!unknown header%s\n", text);
     }
 
     return NO_REQUEST;
@@ -189,7 +204,8 @@ Http_Conn::HTTP_CODE Http_Conn::process_read(){
     while(((m_check_state == CHECK_STATE_CONTENT) && (line_status == LINE_OK)) || ((line_status = parse_line()) == LINE_OK)){
         text = get_line();
         m_start_line = m_checked_idx;
-        printf("got 1 http line : %s\n", text);
+        if(print)
+        printf("got 1 http line : %s in %d\n", text, m_sockfd);
 
         switch (m_check_state)
         {
@@ -246,14 +262,12 @@ Http_Conn::HTTP_CODE Http_Conn::do_request(){
 void Http_Conn::unmap(){
     if(m_file_address){
         munmap(m_file_address, m_file_stat.st_size);
-        m_file_address = NULL;
+        m_file_address = 0;
     }
 }
 
 bool Http_Conn::write(){
     int temp = 0;
-    int bytes_have_send = 0;
-    int bytes_to_send = m_write_idx;
     if(bytes_to_send == 0){
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         init();
@@ -262,26 +276,47 @@ bool Http_Conn::write(){
 
     while(true){
         temp = writev(m_sockfd, m_iv, m_iv_count);
-        if(temp <= -1){
+        writev(STDOUT_FILENO, m_iv, m_iv_count);
+        if(temp < 0){
             if((errno == EAGAIN) || (errno == EWOULDBLOCK)){
+                printf("write in %d blocks, try next time\n", m_sockfd);
                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
                 return true;
             }
             unmap();
             return false;
         }
+
         bytes_to_send -= temp;
         bytes_have_send += temp;
+        if (bytes_have_send >= m_iv[0].iov_len)
+        {
+            m_iv[0].iov_len = 0;
+            m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
+            m_iv[1].iov_len = bytes_to_send;
+        }
+        else
+        {
+            m_iv[0].iov_base = m_write_buf + bytes_have_send;
+            m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
+        }
         /*TAG*/
-        if(bytes_to_send <= bytes_have_send){
+        if(bytes_to_send <= 0){
             /*send successfully*/
             unmap();
+            modfd(m_epollfd, m_sockfd, EPOLLIN);
             if(m_linger){
+                if(print)
+                printf("write success in %d, keep-alive\n", m_sockfd);
+                if(m_checked_idx < m_read_idx){
+                    if(print)
+                    printf("next request has come and will be discard %d : %s\n", m_sockfd, &m_read_buf[m_checked_idx]);
+                }
                 init();
-                modfd(m_epollfd, m_sockfd, EPOLLIN);
                 return true;
             }else{
-                modfd(m_epollfd, m_sockfd, EPOLLIN);
+                if(print)
+                printf("write success in %d, close\n", m_sockfd);
                 return false;
             }
         }
@@ -297,6 +332,7 @@ bool Http_Conn::add_response(const char * format, ...){
     va_start(arg_list, format);
     int len = vsnprintf(m_write_buf + m_write_idx, WRITE_BUFFER_SIZE - m_write_idx - 1, format, arg_list);
     if(len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx)){
+        va_end(arg_list);
         return false;
     }
     m_write_idx += len;
@@ -305,7 +341,7 @@ bool Http_Conn::add_response(const char * format, ...){
 }
 
 bool Http_Conn::add_status_line(int status, const char * title){
-    return add_response("%s %d %s\r\n", "HTTP/1.1", status, title);
+    return add_response("%s %d %s\r\n", "HTTP/1.0", status, title);
 }
 
 bool Http_Conn::add_headers(int content_len){
@@ -313,7 +349,7 @@ bool Http_Conn::add_headers(int content_len){
 }
 
 bool Http_Conn::add_content_length(int content_len){
-    return add_response("Content-Length: %d\r\n", content_len);
+    return add_response("Content-Length:%d\r\n", content_len);
 }
 
 bool Http_Conn::add_linger(){
@@ -332,6 +368,8 @@ bool Http_Conn::process_write(HTTP_CODE ret){
     switch (ret)
     {
     case INTERNAL_ERROR:
+        if(print)
+            printf("invalid response\n");
         add_status_line(500, error_500_title);
         add_headers(strlen(error_500_form));
         if(!add_content(error_500_form)){
@@ -339,6 +377,8 @@ bool Http_Conn::process_write(HTTP_CODE ret){
         }
         break;
     case NO_RESOURCE:
+        if(print)
+            printf("invalid response\n");
         add_status_line(404, error_404_title); 
         add_headers(strlen(error_404_form));
         if(!add_content(error_404_form)){
@@ -346,6 +386,8 @@ bool Http_Conn::process_write(HTTP_CODE ret){
         }
         break;
     case FORBIDDEN_REQUEST:
+        if(print)
+            printf("invalid response\n");
         add_status_line(403, error_403_title);
         add_headers(strlen(error_403_form));
         if(!add_content(error_403_form)){
@@ -353,6 +395,8 @@ bool Http_Conn::process_write(HTTP_CODE ret){
         }
         break;
     case FILE_REQUEST:
+        if(print)
+            printf("valid response\n");
         add_status_line(200, ok_200_title);
         if(m_file_stat.st_size != 0){
             add_headers(m_file_stat.st_size);
@@ -361,6 +405,7 @@ bool Http_Conn::process_write(HTTP_CODE ret){
             m_iv[1].iov_base = m_file_address;
             m_iv[1].iov_len = m_file_stat.st_size;
             m_iv_count = 2;
+            bytes_to_send = m_write_idx + m_file_stat.st_size;
             return true;
         }else{
             const char *ok_string = "<html><body></body></html>";
@@ -378,16 +423,20 @@ bool Http_Conn::process_write(HTTP_CODE ret){
     m_iv[0].iov_base = m_write_buf;
     m_iv[0].iov_len = m_write_idx;
     m_iv_count = 1;
+    bytes_to_send = m_write_idx;
     return true;
 }
 
 void Http_Conn::process(){
+    if(print)
+    printf("start process %d\n", m_sockfd);
     HTTP_CODE read_ret = process_read();
     if(read_ret == NO_REQUEST){
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         return;
     }
     bool write_ret = process_write(read_ret);
+    //对于长连接可能有丢失请求的情况发生。
     if(!write_ret){
         close_conn();
     }

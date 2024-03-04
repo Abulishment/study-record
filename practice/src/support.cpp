@@ -27,7 +27,6 @@ int open_listenfd(const char *port, bool isTcp){
     }else{
         hints.ai_socktype = SOCK_DGRAM;
     }
-    hints.ai_family = PF_INET;
     hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG;
     hints.ai_flags |= AI_NUMERICSERV;
     if((rc = getaddrinfo(NULL, port, &hints, &listp)) != 0){
@@ -39,8 +38,7 @@ int open_listenfd(const char *port, bool isTcp){
         if((listenfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0){
             continue;
         }
-        struct linger tmp = {1, 0};
-        setsockopt(listenfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
+        setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
 
         if(bind(listenfd, p->ai_addr, p->ai_addrlen) == 0){
             break;
@@ -117,7 +115,7 @@ int setnonblocking(int fd){
 void addfd_et(int epollfd, int fd, bool enable_et){
     epoll_event event;
     event.data.fd = fd;
-    event.events = EPOLLIN | EPOLLRDHUP;
+    event.events = EPOLLIN;
     if(enable_et){
         event.events |= EPOLLET;
     }
@@ -157,19 +155,19 @@ void removefd(int epollfd, int fd){
     close(fd);
 }
 
-// void addsig(int sig, void(*handler)(int), bool restart){
-//     struct sigaction sa;
-//     memset(&sa, '\0', sizeof(sa));
-//     sa.sa_handler = handler;
-//     if(restart){
-//         sa.sa_flags |= SA_RESTART;
-//     }
-//     sigfillset(&sa.sa_mask);
-//     assert(sigaction(sig, &sa, NULL) != -1);
-// }
+void addsig(int sig, void(*handler)(int), bool restart){
+    struct sigaction sa;
+    memset(&sa, '\0', sizeof(sa));
+    sa.sa_handler = handler;
+    if(restart){
+        sa.sa_flags |= SA_RESTART;
+    }
+    sigfillset(&sa.sa_mask);
+    assert(sigaction(sig, &sa, NULL) != -1);
+}
 
-// void send_error(int connfd, const char * info){
-//     printf("%s", info);
-//     send(connfd, info, strlen(info), 0);
-//     close(connfd);
-// }
+void send_error(int connfd, const char * info){
+    printf("%s", info);
+    send(connfd, info, strlen(info), 0);
+    close(connfd);
+}

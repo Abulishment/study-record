@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include<signal.h>
 #include "../../../../../usr/include/x86_64-linux-gnu/sys/epoll.h"
+#include <cassert>
 
 #define LISTENQ 5
 
@@ -152,4 +153,21 @@ void modfd(int epollfd, int fd, int ev){
 void removefd(int epollfd, int fd){
     epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, 0);
     close(fd);
+}
+
+void addsig(int sig, void(*handler)(int), bool restart){
+    struct sigaction sa;
+    memset(&sa, '\0', sizeof(sa));
+    sa.sa_handler = handler;
+    if(restart){
+        sa.sa_flags |= SA_RESTART;
+    }
+    sigfillset(&sa.sa_mask);
+    assert(sigaction(sig, &sa, NULL) != -1);
+}
+
+void send_error(int connfd, const char * info){
+    printf("%s", info);
+    send(connfd, info, strlen(info), 0);
+    close(connfd);
 }
