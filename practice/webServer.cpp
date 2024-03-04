@@ -46,7 +46,7 @@ public:
         if(listen_fd < 0)
             throw std::exception();
 
-        addfd_et(epoll_fd, listen_fd, false);
+        addfd(epoll_fd, listen_fd, false, false);
         user_count = 0;
         Http_Conn::m_epollfd = epoll_fd;
         init_signal();
@@ -142,12 +142,11 @@ private:
 };
 
 int main(int argc, char *argv[]){
-    if(argc <= 2){
-        fprintf(stderr, "usage : %s [ip_address] [port_number]\n", basename(argv[0]));
+    if(argc <= 1){
+        fprintf(stderr, "usage : %s [port_number]\n", basename(argv[0]));
         return 1;
     }
-    const char * ip = argv[1];
-    const char * port = argv[2];
+    const char * port = argv[1];
 
     WebServer ws(port);
     ws.init();

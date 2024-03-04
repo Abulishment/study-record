@@ -36,7 +36,7 @@ void Http_Conn::init(int sockfd, const sockaddr_storage & addr, socklen_t addrle
     int reuse = 1;
     setsockopt(m_sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
-    addfd_oneshot(m_epollfd, sockfd, true);
+    addfd(m_epollfd, sockfd, true, true);
     m_user_count++;
     init();
 }
@@ -269,18 +269,18 @@ void Http_Conn::unmap(){
 bool Http_Conn::write(){
     int temp = 0;
     if(bytes_to_send == 0){
-        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        modfd(m_epollfd, m_sockfd, EPOLLIN, true);
         init();
         return true;
     }
 
     while(true){
         temp = writev(m_sockfd, m_iv, m_iv_count);
-        writev(STDOUT_FILENO, m_iv, m_iv_count);
+        // writev(STDOUT_FILENO, m_iv, m_iv_count);
         if(temp < 0){
             if((errno == EAGAIN) || (errno == EWOULDBLOCK)){
                 printf("write in %d blocks, try next time\n", m_sockfd);
-                modfd(m_epollfd, m_sockfd, EPOLLOUT);
+                modfd(m_epollfd, m_sockfd, EPOLLOUT, true);
                 return true;
             }
             unmap();
@@ -304,7 +304,7 @@ bool Http_Conn::write(){
         if(bytes_to_send <= 0){
             /*send successfully*/
             unmap();
-            modfd(m_epollfd, m_sockfd, EPOLLIN);
+            modfd(m_epollfd, m_sockfd, EPOLLIN, true);
             if(m_linger){
                 if(print)
                 printf("write success in %d, keep-alive\n", m_sockfd);
@@ -432,7 +432,7 @@ void Http_Conn::process(){
     printf("start process %d\n", m_sockfd);
     HTTP_CODE read_ret = process_read();
     if(read_ret == NO_REQUEST){
-        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        modfd(m_epollfd, m_sockfd, EPOLLIN, true);
         return;
     }
     bool write_ret = process_write(read_ret);
@@ -440,5 +440,5 @@ void Http_Conn::process(){
     if(!write_ret){
         close_conn();
     }
-    modfd(m_epollfd, m_sockfd, EPOLLOUT);
+    modfd(m_epollfd, m_sockfd, EPOLLOUT, true);
 }

@@ -112,41 +112,29 @@ int setnonblocking(int fd){
     return old_option;
 }
 
-void addfd_et(int epollfd, int fd, bool enable_et){
+void addfd(int epollfd, int fd, bool enable_et, bool enable_oneshot){
     epoll_event event;
     event.data.fd = fd;
-    event.events = EPOLLIN;
     if(enable_et){
-        event.events |= EPOLLET;
+        event.events = EPOLLIN | EPOLLRDHUP | EPOLLET;
+    }else{
+        event.events = EPOLLIN | EPOLLRDHUP;
     }
-    epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
-    setnonblocking(fd);
-}
-
-void addfd_oneshot(int epollfd, int fd, bool oneshot){
-    epoll_event event;
-    event.data.fd = fd;
-    event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
-    if(oneshot){
+    if(enable_oneshot){
         event.events |= EPOLLONESHOT;
     }
     epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
     setnonblocking(fd);
 }
 
-void reset_oneshot(int epollfd, int fd){
+void modfd(int epollfd, int fd, int ev, bool enable_et){
     epoll_event event;
     event.data.fd = fd;
-    event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-    if(epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event) < 0){
-        printf("epoll_ctl in reset_oneshot error\n");
+    if(enable_et){
+        event.events = ev | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
+    }else{
+        event.events = ev | EPOLLONESHOT | EPOLLRDHUP;
     }
-}
-
-void modfd(int epollfd, int fd, int ev){
-    epoll_event event;
-    event.data.fd = fd;
-    event.events = ev | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
 }
 
