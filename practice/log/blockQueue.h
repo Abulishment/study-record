@@ -13,6 +13,7 @@ class BlockQueue{
 public:
     BlockQueue(int size){
         max_size = size;
+        buf = new T[max_size];
     }
     virtual ~BlockQueue(){
         delete[] buf;
@@ -25,7 +26,6 @@ public:
     }
 
     void init(){
-        buf = new T[max_size];
         front = 0;
         rear = 0;
         sem_init(&mutex, 0, 1);

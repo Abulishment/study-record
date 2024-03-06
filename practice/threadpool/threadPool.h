@@ -14,6 +14,8 @@ public:
     ThreadPool(int thread_number = 8, int max_requests = 10000);
     virtual ~ThreadPool();
     bool append(T* request);
+    /*0: readevent 1: writeevent*/
+    bool append(T* request, int event);
 private:
     static void* worker(void *arg);
     void run();
@@ -54,6 +56,20 @@ ThreadPool<T>::~ThreadPool(){
 
 template<typename T>
 bool ThreadPool<T>::append(T *request){
+    m_queuelocker.lock();
+    if(m_workqueue.size() > m_max_requests){
+        m_queuelocker.unlock();
+        return false;
+    }
+    m_workqueue.push_back(request);
+    m_queuelocker.unlock();
+    m_queuestat.post();
+    return true;
+}
+
+template<typename T>
+bool ThreadPool<T>::append(T *request, int state){
+    request->set_state(state);
     m_queuelocker.lock();
     if(m_workqueue.size() > m_max_requests){
         m_queuelocker.unlock();

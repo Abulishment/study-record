@@ -18,10 +18,7 @@
 #include<sys/mman.h>
 #include<stdarg.h>
 #include<errno.h>
-
-#include "../lock/locker.h"
-#include "../src/support.h"
-#include "../ascendSortedTimerList.h"
+#include "../timer/ascendSortedTimerList.h"
 
 class Http_Conn{
 public:
@@ -41,9 +38,11 @@ public:
     void init(int sockfd, const sockaddr_storage & address, socklen_t socklen);
     void close_conn(bool real_close = true);
     void process();
+    void set_state(int state){task_state = state;}
     bool read();
     bool write();
     int get_sockfd(){return m_sockfd;}
+    void timer_func();
 private:
     void init();
     HTTP_CODE process_read();
@@ -67,6 +66,10 @@ private:
 public:
     static int m_epollfd;
     static int m_user_count;
+    /*0: reactor 1: proactor*/
+    static int actor_mode;
+    static sort_timer_list<Http_Conn> * lst;
+    util_timer<Http_Conn> *timer; 
 private:
     int m_sockfd;
     sockaddr_storage m_address;
@@ -93,6 +96,8 @@ private:
     int m_iv_count;
     int bytes_to_send;
     int bytes_have_send;
+    /*0: read 1: write*/
+    int task_state;
 };
 
 #endif

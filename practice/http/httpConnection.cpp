@@ -16,10 +16,28 @@ const char * doc_root = ".";
 
 int Http_Conn::m_user_count = 0;
 int Http_Conn::m_epollfd = -1;
+int Http_Conn::actor_mode = 1;
+sort_timer_list<Http_Conn> * Http_Conn::lst = NULL;
+
 static bool print = true;
 
 void Http_Conn::close_conn(bool real_close){
     if(real_close && (m_sockfd != -1)){
+        // if(print)
+        // printf("close %d(fd)\n", m_sockfd);
+        LOG(std::string("close ") + std::to_string(m_sockfd) + "(fd)\n");
+        removefd(m_epollfd, m_sockfd);
+        m_sockfd = -1;
+        m_user_count--;
+    }
+    if(timer){
+        lst->del_timer(timer);
+        timer = NULL;
+    }
+}
+
+void Http_Conn::timer_func(){
+    if(m_sockfd != -1){
         // if(print)
         // printf("close %d(fd)\n", m_sockfd);
         LOG(std::string("close ") + std::to_string(m_sockfd) + "(fd)\n");
@@ -461,6 +479,19 @@ void Http_Conn::process(){
     // if(print)
     // printf("start process in %d\n", m_sockfd);
     LOG(std::string("start process in ") + std::to_string(m_sockfd) + "\n");
+    if(actor_mode == 0){
+        // LOG(std::string("reactor\n"));
+        if(task_state == 1){
+            if(!write()){
+                close_conn();
+            }
+            return;
+        }else{
+            if(!read()){
+                close_conn();
+            }
+        }
+    }
     HTTP_CODE read_ret = process_read();
     if(read_ret == NO_REQUEST){
         modfd(m_epollfd, m_sockfd, EPOLLIN, true);

@@ -5,9 +5,10 @@
 using namespace std;
 
 int main(){
-    Logger::getInstance()->init("./log.txt");
+    Logger::getInstance()->init("./log.txt", true, false);
     while(true){
-        LOG("hello ");
+        static int i = 0;
+        LOG(to_string(i++) + '\n');
     }
     return 0;
 }
