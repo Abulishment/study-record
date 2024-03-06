@@ -19,6 +19,7 @@
 #include<stdarg.h>
 #include<errno.h>
 #include "../timer/ascendSortedTimerList.h"
+#include "../timer/timeWheelTimer.h"
 
 class Http_Conn{
 public:
@@ -68,8 +69,8 @@ public:
     static int m_user_count;
     /*0: reactor 1: proactor*/
     static int actor_mode;
-    static sort_timer_list<Http_Conn> * lst;
-    util_timer<Http_Conn> *timer; 
+    static time_wheel<Http_Conn> * tw;
+    tw_timer<Http_Conn> *timer; 
 private:
     int m_sockfd;
     sockaddr_storage m_address;

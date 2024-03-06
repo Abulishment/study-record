@@ -50,7 +50,7 @@ void WebServer::init(const char* port, bool set_reactor_mode){
         Http_Conn::actor_mode = 1;
     }
     Http_Conn::m_epollfd = epoll_fd;
-    Http_Conn::lst = &lst;
+    Http_Conn::tw = &tw;
 
     assert(socketpair(PF_UNIX, SOCK_STREAM, 0, sig_pipe) == 0);
     init_signal();
@@ -83,12 +83,10 @@ void WebServer::deal_connection(){
         LOG(std::string("accept connection : ") + std::to_string(clientfd) + "\n");
         users[clientfd].init(clientfd, client_address, client_len);
 
-        util_timer<Http_Conn> *timer = new util_timer<Http_Conn>();
+        tw_timer<Http_Conn> *timer = tw.add_timer(3 *  TIME_SLOT);
         timer->user_data = users + clientfd;
-        timer->absolute_expire = time(NULL) + 3 * TIME_SLOT;
         timer->cb_func = timer_cb_func;
         users[clientfd].timer = timer;
-        lst.add_timer(timer);
     }
 }
 
@@ -111,8 +109,9 @@ void WebServer::timer_update(int sockfd){
     if(!hp->timer){
         return;
     }
-    hp->timer->absolute_expire = time(NULL) + 3 * TIME_SLOT;
-    lst.adjust_timer(users[sockfd].timer);
+    tw.adjust_timer(hp->timer, 3 * TIME_SLOT);
+    // hp->timer->absolute_expire = time(NULL) + 3 * TIME_SLOT;
+    // lst.adjust_timer(users[sockfd].timer);
 }
 
 void WebServer::deal_read(int sockfd){
@@ -182,7 +181,7 @@ void WebServer::eventloop(){
 
         if(timeout){
             LOG("timer tick\n");
-            lst.tick();
+            tw.tick();
             timeout = false;
             alarm(TIME_SLOT);
         }

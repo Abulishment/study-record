@@ -17,7 +17,7 @@ const char * doc_root = ".";
 int Http_Conn::m_user_count = 0;
 int Http_Conn::m_epollfd = -1;
 int Http_Conn::actor_mode = 1;
-sort_timer_list<Http_Conn> * Http_Conn::lst = NULL;
+time_wheel<Http_Conn> * Http_Conn::tw = NULL;
 
 static bool print = true;
 
@@ -31,7 +31,7 @@ void Http_Conn::close_conn(bool real_close){
         m_user_count--;
     }
     if(timer){
-        lst->del_timer(timer);
+        tw->del_timer(timer);
         timer = NULL;
     }
 }

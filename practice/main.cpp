@@ -9,9 +9,9 @@ int main(int argc, char *argv[]){
         return 1;
     }
     const char * port = argv[1];
-    Logger::getInstance()->init("./log.txt", false, false);
+    Logger::getInstance()->init("./log.txt", false, true);
     WebServer ws;
-    ws.init(port, true);
+    ws.init(port, false);
     ws.eventloop();
     return 0;
 }

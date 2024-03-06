@@ -6,6 +6,7 @@
 #include "../src/support.h"
 #include "../log/logger.h"
 #include "../timer/ascendSortedTimerList.h"
+#include "../timer/timeWheelTimer.h"
 
 #define MAX_EVENT_NUMBER 10000
 
@@ -27,6 +28,7 @@ private:
     bool deal_signal(bool & timeout, bool & stop_server);
     static void signal_handler(int sig);
     ThreadPool<Http_Conn> *pool;
+    time_wheel<Http_Conn> tw;
     Http_Conn* users;
     epoll_event events[MAX_EVENT_NUMBER];
     int user_count = 0;
@@ -34,7 +36,6 @@ private:
     int listen_fd = -1;
     /*0: reactor 1: proactor*/
     int actor_mode = 1;
-    sort_timer_list<Http_Conn> lst;
 };
 
 #endif

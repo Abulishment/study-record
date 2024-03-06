@@ -17,11 +17,11 @@ support.o: ./src/support.cpp ./src/support.h
 	$(CXX) $(CXXFLAGS) -c ./src/support.cpp
 
 httpConnection.o: ./http/httpConnection.cpp ./http/httpConnection.h ./src/support.h ./log/logger.h ./lock/locker.h\
-				./threadpool/threadPool.h  	./timer/ascendSortedTimerList.h
+				./threadpool/threadPool.h  	./timer/timeWheelTimer.h
 	$(CXX) $(CXXFLAGS) -c ./http/httpConnection.cpp
 
 webServer.o: ./web_server/webServer.cpp ./web_server/webServer.h ./http/httpConnection.h ./src/support.h ./log/logger.h \
-			./threadpool/threadPool.h ./timer/ascendSortedTimerList.h 
+			./threadpool/threadPool.h ./timer/timeWheelTimer.h 
 	$(CXX) $(CXXFLAGS) -c ./web_server/webServer.cpp
 
 main.o: ./main.cpp ./log/logger.h ./web_server/webServer.h
